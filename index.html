@@ -7,52 +7,96 @@
   #camera { width: 100%; height: 100vh; display: block; object-fit: cover; }
   #game { position: relative; width: 100%; height: 100vh; overflow: hidden; background: black; }
   .animal { position: absolute; text-shadow: 0 0 10px rgba(0,0,0,0.8); transition: font-size 0.1s, opacity 0.3s; filter: drop-shadow(0 0 5px rgba(255,255,255,0.3)); }
+  #timer { position: absolute; top: 20px; right: 20px; z-index: 100; font-size: 36px; font-weight: bold; color: white; background: rgba(0,0,0,0.7); padding: 10px 20px; border-radius: 10px; }
   #permissionBtn { position: absolute; top: 20px; left: 20px; z-index: 100; padding: 12px 20px; font-size: 16px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
   #permissionBtn:disabled { background: #45a049; }
-  #info { position: absolute; bottom: 20px; left: 20px; color: white; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 5px; font-size: 14px; }
+  
+  /* Splash Screens */
+  #endScreen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: none; z-index: 200; padding: 20px; overflow-y: auto; }
+  #endScreen.show { display: flex; flex-direction: column; justify-content: center; align-items: center; }
+  
+  #scoreScreen { display: none; }
+  #scoreScreen.show { display: block; }
+  
+  .screen-title { font-size: 32px; font-weight: bold; color: white; margin: 30px 0; text-align: center; }
+  .animal-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; width: 100%; max-width: 400px; }
+  .animal-card { background: rgba(255,255,255,0.1); padding: 20px; border-radius: 10px; text-align: center; border: 2px solid rgba(255,255,255,0.3); }
+  .animal-card-emoji { font-size: 48px; margin-bottom: 10px; }
+  .animal-card-name { font-size: 16px; color: white; margin-bottom: 10px; }
+  .counter { display: flex; justify-content: space-around; align-items: center; gap: 10px; }
+  .counter button { padding: 8px 12px; font-size: 18px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; }
+  .counter-display { font-size: 24px; color: white; font-weight: bold; min-width: 40px; text-align: center; }
+  
+  #doneBtn { padding: 15px 40px; font-size: 20px; background: #2196F3; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: bold; margin-top: 30px; }
+  
+  #finalScore { font-size: 24px; color: white; margin: 20px; text-align: center; line-height: 1.8; }
+  #playAgainBtn { padding: 15px 40px; font-size: 20px; background: #4CAF50; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: bold; margin-top: 30px; }
 </style>
-
-<button id="permissionBtn">Start Hunting</button>
 
 <div id="game">
   <video id="camera" autoplay playsinline></video>
   <div id="animals"></div>
+  <button id="permissionBtn">Start Hunting</button>
+  <div id="timer">20</div>
 </div>
 
-<div id="info">Move your iPad around to find animals!</div>
+<!-- Score Screen -->
+<div id="endScreen">
+  <div id="scoreScreen">
+    <div class="screen-title">How many did you see? 🔍</div>
+    <div class="animal-grid" id="animalGrid"></div>
+    <button id="doneBtn">Done</button>
+  </div>
+  
+  <div id="resultScreen" style="display: none; text-align: center;">
+    <div class="screen-title">Your Score! 🎉</div>
+    <div id="finalScore"></div>
+    <button id="playAgainBtn">Hunt Again</button>
+  </div>
+</div>
 
 <script>
   const video = document.getElementById('camera');
   const animalsContainer = document.getElementById('animals');
-  const animalEmojis = ['🦁', '🐘', '🦒', '🐅', '🦓', '🐻', '🦊', '🐒', '🦏', '🐃'];
-  const placedAnimals = [];
+  const timerDisplay = document.getElementById('timer');
+  const animalEmojis = { '🦁': 'Lion', '🐘': 'Elephant', '🦒': 'Giraffe', '🐅': 'Tiger', '🦓': 'Zebra', '🐻': 'Bear', '🦊': 'Fox', '🐒': 'Monkey' };
+  const animalKeys = Object.keys(animalEmojis);
+  
+  let placedAnimals = [];
   let tiltForward = 0;
   let motionEnabled = false;
+  let gameActive = false;
+  let timeLeft = 20;
+  let animalCounts = {};
+  let animalCountsActual = {};
+  let currentRotationAnimal = null;
+  
+  // Initialize counts
+  animalKeys.forEach(animal => {
+    animalCounts[animal] = 0;
+    animalCountsActual[animal] = 0;
+  });
 
   // Start camera
   navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
     .then(stream => video.srcObject = stream)
     .catch(() => alert('Camera access denied'));
 
-  // Request motion permission on button click
+  // Request motion permission
   document.getElementById('permissionBtn').addEventListener('click', async () => {
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
       try {
         const permission = await DeviceOrientationEvent.requestPermission();
         if (permission === 'granted') {
           motionEnabled = true;
-          document.getElementById('permissionBtn').textContent = '✓ Hunting Started';
-          document.getElementById('permissionBtn').disabled = true;
-          startSpawning();
+          startGame();
         }
       } catch (error) {
         alert('Motion permission denied');
       }
     } else {
       motionEnabled = true;
-      document.getElementById('permissionBtn').textContent = '✓ Hunting Started';
-      document.getElementById('permissionBtn').disabled = true;
-      startSpawning();
+      startGame();
     }
   });
 
@@ -61,34 +105,61 @@
     tiltForward = event.beta || 0;
   });
 
-  function startSpawning() {
-    // Spawn 8-10 animals at fixed positions at the start
-    for (let i = 0; i < 8; i++) {
-      spawnAnimalAtPosition();
-    }
+  function startGame() {
+    gameActive = true;
+    document.getElementById('permissionBtn').style.display = 'none';
+    placedAnimals = [];
+    animalCountsActual = {};
+    animalKeys.forEach(animal => {
+      animalCountsActual[animal] = 0;
+    });
     
-    // Occasionally add new animals
-    setInterval(() => {
-      if (placedAnimals.length < 12 && Math.random() > 0.7) {
-        spawnAnimalAtPosition();
+    // Start spawning animals every 5 seconds
+    spawnNewAnimal();
+    let rotationInterval = setInterval(() => {
+      if (gameActive) {
+        spawnNewAnimal();
+      } else {
+        clearInterval(rotationInterval);
       }
-    }, 3000);
+    }, 5000);
+
+    // Start timer
+    let timerInterval = setInterval(() => {
+      timeLeft--;
+      timerDisplay.textContent = timeLeft;
+      
+      if (timeLeft <= 0) {
+        clearInterval(timerInterval);
+        endGame();
+      }
+    }, 1000);
   }
 
-  function spawnAnimalAtPosition() {
+  function spawnNewAnimal() {
+    // Pick a random animal for this 5-second round
+    currentRotationAnimal = animalKeys[Math.floor(Math.random() * animalKeys.length)];
+    
+    // Spawn 3-5 of that animal
+    let count = 2 + Math.floor(Math.random() * 4);
+    for (let i = 0; i < count; i++) {
+      spawnAnimal(currentRotationAnimal);
+    }
+  }
+
+  function spawnAnimal(animalEmoji) {
     const animal = document.createElement('div');
     animal.className = 'animal';
-    animal.textContent = animalEmojis[Math.floor(Math.random() * animalEmojis.length)];
+    animal.textContent = animalEmoji;
     
-    // Random position across the screen
     const left = Math.random() * 85 + '%';
     const top = Math.random() * 80 + '%';
     animal.style.left = left;
     animal.style.top = top;
     
-    // Store position (doesn't change)
     const animalObj = {
       element: animal,
+      emoji: animalEmoji,
       baseSize: 50 + Math.random() * 30,
       left: left,
       top: top,
@@ -99,24 +170,102 @@
     animal.style.opacity = animalObj.opacity;
     placedAnimals.push(animalObj);
     animalsContainer.appendChild(animal);
+    
+    animalCountsActual[animalEmoji]++;
 
-    // Remove after 15 seconds
+    // Remove after 5 seconds
     setTimeout(() => {
       animal.style.opacity = '0';
       setTimeout(() => {
         animal.remove();
         placedAnimals.splice(placedAnimals.indexOf(animalObj), 1);
       }, 300);
-    }, 15000);
+    }, 5000);
   }
 
-  // Update animal sizes based on tilt (you moving closer)
+  // Update animal sizes based on tilt
   setInterval(() => {
     placedAnimals.forEach(a => {
-      // Tilt forward = bigger (simulates you walking closer)
       let newSize = a.baseSize + (tiltForward * 1.5);
       newSize = Math.max(a.baseSize * 0.7, Math.min(a.baseSize * 3, newSize));
       a.element.style.fontSize = newSize + 'px';
     });
   }, 50);
+
+  function endGame() {
+    gameActive = false;
+    animalsContainer.innerHTML = '';
+    showScoreScreen();
+  }
+
+  function showScoreScreen() {
+    const grid = document.getElementById('animalGrid');
+    grid.innerHTML = '';
+    
+    animalKeys.forEach(emoji => {
+      const card = document.createElement('div');
+      card.className = 'animal-card';
+      card.innerHTML = `
+        <div class="animal-card-emoji">${emoji}</div>
+        <div class="animal-card-name">${animalEmojis[emoji]}</div>
+        <div class="counter">
+          <button onclick="decreaseCount('${emoji}')">−</button>
+          <div class="counter-display" id="count-${emoji}">0</div>
+          <button onclick="increaseCount('${emoji}')">+</button>
+        </div>
+      `;
+      grid.appendChild(card);
+    });
+    
+    document.getElementById('endScreen').classList.add('show');
+    document.getElementById('scoreScreen').classList.add('show');
+  }
+
+  window.increaseCount = function(emoji) {
+    animalCounts[emoji]++;
+    document.getElementById('count-' + emoji).textContent = animalCounts[emoji];
+  };
+
+  window.decreaseCount = function(emoji) {
+    if (animalCounts[emoji] > 0) {
+      animalCounts[emoji]--;
+      document.getElementById('count-' + emoji).textContent = animalCounts[emoji];
+    }
+  };
+
+  document.getElementById('doneBtn').addEventListener('click', showResults);
+
+  function showResults() {
+    document.getElementById('scoreScreen').classList.remove('show');
+    document.getElementById('resultScreen').style.display = 'block';
+    
+    let resultText = '<strong>Here\'s what you saw:</strong><br><br>';
+    let correct = 0;
+    let total = 0;
+    
+    animalKeys.forEach(emoji => {
+      const saw = animalCounts[emoji];
+      const actual = animalCountsActual[emoji];
+      const match = saw === actual ? '✓' : '✗';
+      resultText += `${emoji} ${animalEmojis[emoji]}: You said ${saw}, it was ${actual} ${match}<br>`;
+      
+      if (saw === actual) correct++;
+      total++;
+    });
+    
+    resultText += `<br><strong>You got ${correct} out of ${total} correct!</strong>`;
+    document.getElementById('finalScore').innerHTML = resultText;
+  }
+
+  document.getElementById('playAgainBtn').addEventListener('click', function() {
+    document.getElementById('endScreen').classList.remove('show');
+    document.getElementById('resultScreen').style.display = 'none';
+    document.getElementById('scoreScreen').classList.remove('show');
+    document.getElementById('permissionBtn').style.display = 'block';
+    timeLeft = 20;
+    timerDisplay.textContent = '20';
+    animalKeys.forEach(animal => {
+      animalCounts[animal] = 0;
+    });
+  });
 </script>
