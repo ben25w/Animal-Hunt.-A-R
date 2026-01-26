@@ -6,7 +6,7 @@
   body { margin: 0; font-family: Arial; }
   #camera { width: 100%; height: 100vh; display: block; }
   #game { position: relative; width: 100%; height: 100vh; overflow: hidden; }
-  .animal { position: absolute; width: 80px; height: 80px; background-size: contain; background-repeat: no-repeat; }
+  .animal { position: absolute; font-size: 60px; transition: font-size 0.1s; }
 </style>
 
 <div id="game">
@@ -18,10 +18,17 @@
   const video = document.getElementById('camera');
   const animalsContainer = document.getElementById('animals');
   const animals = ['🦁', '🐘', '🦒', '🐅', '🦓', '🐻', '🦊', '🐒'];
+  const activeAnimals = [];
+  let tiltForward = 0;
 
   // Start camera
   navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
     .then(stream => video.srcObject = stream);
+
+  // Track phone tilt (moving forward makes the number higher)
+  window.addEventListener('deviceorientation', (event) => {
+    tiltForward = event.beta || 0; // 0 = level, positive = tilting forward
+  });
 
   // Spawn random animals every 2 seconds
   setInterval(() => {
@@ -30,10 +37,24 @@
     animal.textContent = animals[Math.floor(Math.random() * animals.length)];
     animal.style.left = Math.random() * 80 + '%';
     animal.style.top = Math.random() * 80 + '%';
-    animal.style.fontSize = '60px';
+    const animalObj = { element: animal, size: 60 };
+    activeAnimals.push(animalObj);
     animalsContainer.appendChild(animal);
 
-    // Remove after 5 seconds
-    setTimeout(() => animal.remove(), 5000);
+    // Remove after 8 seconds
+    setTimeout(() => {
+      animal.remove();
+      activeAnimals.splice(activeAnimals.indexOf(animalObj), 1);
+    }, 8000);
   }, 2000);
+
+  // Update animal sizes based on phone tilt
+  setInterval(() => {
+    activeAnimals.forEach(a => {
+      // Tilt forward = bigger (max size 150px)
+      a.size = 60 + (tiltForward * 2);
+      a.size = Math.max(60, Math.min(150, a.size));
+      a.element.style.fontSize = a.size + 'px';
+    });
+  }, 50);
 </script>
