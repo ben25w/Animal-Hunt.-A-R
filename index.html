@@ -7,7 +7,10 @@
   #camera { width: 100%; height: 100vh; display: block; }
   #game { position: relative; width: 100%; height: 100vh; overflow: hidden; }
   .animal { position: absolute; font-size: 60px; transition: font-size 0.1s; }
+  #permissionBtn { position: absolute; top: 20px; left: 20px; z-index: 100; padding: 10px 20px; font-size: 16px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; }
 </style>
+
+<button id="permissionBtn">Start Motion Detection</button>
 
 <div id="game">
   <video id="camera" autoplay playsinline></video>
@@ -25,9 +28,28 @@
   navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
     .then(stream => video.srcObject = stream);
 
-  // Track phone tilt (moving forward makes the number higher)
+  // Request motion permission on button click
+  document.getElementById('permissionBtn').addEventListener('click', async () => {
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      try {
+        const permission = await DeviceOrientationEvent.requestPermission();
+        if (permission === 'granted') {
+          document.getElementById('permissionBtn').textContent = '✓ Motion Enabled';
+          document.getElementById('permissionBtn').disabled = true;
+        }
+      } catch (error) {
+        alert('Motion permission denied');
+      }
+    } else {
+      // Non-iOS, just enable it
+      document.getElementById('permissionBtn').textContent = '✓ Motion Enabled';
+      document.getElementById('permissionBtn').disabled = true;
+    }
+  });
+
+  // Track phone tilt
   window.addEventListener('deviceorientation', (event) => {
-    tiltForward = event.beta || 0; // 0 = level, positive = tilting forward
+    tiltForward = event.beta || 0;
   });
 
   // Spawn random animals every 2 seconds
@@ -41,17 +63,15 @@
     activeAnimals.push(animalObj);
     animalsContainer.appendChild(animal);
 
-    // Remove after 8 seconds
     setTimeout(() => {
       animal.remove();
       activeAnimals.splice(activeAnimals.indexOf(animalObj), 1);
     }, 8000);
   }, 2000);
 
-  // Update animal sizes based on phone tilt
+  // Update sizes based on tilt
   setInterval(() => {
     activeAnimals.forEach(a => {
-      // Tilt forward = bigger (max size 150px)
       a.size = 60 + (tiltForward * 2);
       a.size = Math.max(60, Math.min(150, a.size));
       a.element.style.fontSize = a.size + 'px';
