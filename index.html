@@ -20,16 +20,15 @@
   
   .screen-title { font-size: 32px; font-weight: bold; color: white; margin: 30px 0; text-align: center; }
   .animal-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; width: 100%; max-width: 400px; }
-  .animal-card { background: rgba(255,255,255,0.1); padding: 20px; border-radius: 10px; text-align: center; border: 2px solid rgba(255,255,255,0.3); }
-  .animal-card-emoji { font-size: 48px; margin-bottom: 10px; }
-  .animal-card-name { font-size: 16px; color: white; margin-bottom: 10px; }
-  .counter { display: flex; justify-content: space-around; align-items: center; gap: 10px; }
-  .counter button { padding: 8px 12px; font-size: 18px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; }
-  .counter-display { font-size: 24px; color: white; font-weight: bold; min-width: 40px; text-align: center; }
+  .animal-card { background: rgba(255,255,255,0.1); padding: 20px; border-radius: 10px; text-align: center; border: 2px solid rgba(255,255,255,0.3); cursor: pointer; transition: all 0.2s; }
+  .animal-card:active { background: rgba(76,175,80,0.3); transform: scale(0.95); }
+  .animal-card-emoji { font-size: 64px; margin-bottom: 10px; }
+  .animal-card-name { font-size: 14px; color: #aaa; margin-bottom: 10px; }
+  .counter-display { font-size: 28px; color: #4CAF50; font-weight: bold; }
   
   #doneBtn { padding: 15px 40px; font-size: 20px; background: #2196F3; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: bold; margin-top: 30px; }
   
-  #finalScore { font-size: 24px; color: white; margin: 20px; text-align: center; line-height: 1.8; }
+  #finalScore { font-size: 20px; color: white; margin: 20px; text-align: center; line-height: 2; }
   #playAgainBtn { padding: 15px 40px; font-size: 20px; background: #4CAF50; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: bold; margin-top: 30px; }
 </style>
 
@@ -202,19 +201,19 @@
     const grid = document.getElementById('animalGrid');
     grid.innerHTML = '';
     
+    // Only show animals that actually appeared
     animalKeys.forEach(emoji => {
-      const card = document.createElement('div');
-      card.className = 'animal-card';
-      card.innerHTML = `
-        <div class="animal-card-emoji">${emoji}</div>
-        <div class="animal-card-name">${animalEmojis[emoji]}</div>
-        <div class="counter">
-          <button onclick="decreaseCount('${emoji}')">−</button>
+      if (animalCountsActual[emoji] > 0) {
+        const card = document.createElement('div');
+        card.className = 'animal-card';
+        card.onclick = () => increaseCount(emoji);
+        card.innerHTML = `
+          <div class="animal-card-emoji">${emoji}</div>
+          <div class="animal-card-name">${animalEmojis[emoji]}</div>
           <div class="counter-display" id="count-${emoji}">0</div>
-          <button onclick="increaseCount('${emoji}')">+</button>
-        </div>
-      `;
-      grid.appendChild(card);
+        `;
+        grid.appendChild(card);
+      }
     });
     
     document.getElementById('endScreen').classList.add('show');
@@ -224,13 +223,6 @@
   window.increaseCount = function(emoji) {
     animalCounts[emoji]++;
     document.getElementById('count-' + emoji).textContent = animalCounts[emoji];
-  };
-
-  window.decreaseCount = function(emoji) {
-    if (animalCounts[emoji] > 0) {
-      animalCounts[emoji]--;
-      document.getElementById('count-' + emoji).textContent = animalCounts[emoji];
-    }
   };
 
   document.getElementById('doneBtn').addEventListener('click', showResults);
@@ -244,13 +236,15 @@
     let total = 0;
     
     animalKeys.forEach(emoji => {
-      const saw = animalCounts[emoji];
-      const actual = animalCountsActual[emoji];
-      const match = saw === actual ? '✓' : '✗';
-      resultText += `${emoji} ${animalEmojis[emoji]}: You said ${saw}, it was ${actual} ${match}<br>`;
-      
-      if (saw === actual) correct++;
-      total++;
+      if (animalCountsActual[emoji] > 0) {
+        const saw = animalCounts[emoji];
+        const actual = animalCountsActual[emoji];
+        const match = saw === actual ? '✓' : '✗';
+        resultText += `${emoji} You said ${saw}, it was ${actual} ${match}<br>`;
+        
+        if (saw === actual) correct++;
+        total++;
+      }
     });
     
     resultText += `<br><strong>You got ${correct} out of ${total} correct!</strong>`;
