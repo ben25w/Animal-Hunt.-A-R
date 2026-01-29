@@ -1,15 +1,44 @@
 <!doctype html>
 <meta charset='utf-8'>
-<title>Animal Hunt AR</title>
+<title>Animal Hunt Game</title>
 <meta name='viewport' content='width=device-width, initial-scale=1'>
 <style>
   body { margin: 0; font-family: Arial; }
   #camera { width: 100%; height: 100vh; display: block; object-fit: cover; }
-  #game { position: relative; width: 100%; height: 100vh; overflow: hidden; background: black; }
+  #game { position: relative; width: 100%; height: 100vh; overflow: hidden; background: black; display: none; }
   .animal { position: absolute; text-shadow: 0 0 10px rgba(0,0,0,0.8); transition: font-size 0.1s, opacity 0.3s; filter: drop-shadow(0 0 5px rgba(255,255,255,0.3)); }
   #timer { position: absolute; top: 20px; right: 20px; z-index: 100; font-size: 36px; font-weight: bold; color: white; background: rgba(0,0,0,0.7); padding: 10px 20px; border-radius: 10px; }
   #permissionBtn { position: absolute; top: 20px; left: 20px; z-index: 100; padding: 12px 20px; font-size: 16px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
   #permissionBtn:disabled { background: #45a049; }
+  
+  #waterFilter { 
+    position: absolute; 
+    top: 0; 
+    left: 0; 
+    width: 100%; 
+    height: 100%; 
+    background: rgba(0, 150, 200, 0.2); 
+    pointer-events: none; 
+    display: none; 
+    z-index: 10;
+  }
+  #waterFilter.active { 
+    display: block; 
+  }
+  
+  /* Menu Screen */
+  #menuScreen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 300; }
+  #menuScreen.hidden { display: none; }
+  
+  .menu-title { font-size: 48px; font-weight: bold; color: white; margin-bottom: 50px; text-align: center; }
+  .menu-subtitle { font-size: 20px; color: rgba(255,255,255,0.8); margin-bottom: 40px; text-align: center; }
+  
+  .menu-buttons { display: flex; flex-direction: column; gap: 20px; width: 100%; max-width: 300px; }
+  .menu-btn { padding: 20px; font-size: 24px; font-weight: bold; border: none; border-radius: 10px; cursor: pointer; transition: all 0.3s; color: white; }
+  .safari-btn { background: #FF9800; }
+  .safari-btn:active { background: #F57C00; transform: scale(0.98); }
+  .sea-btn { background: #2196F3; }
+  .sea-btn:active { background: #1976D2; transform: scale(0.98); }
   
   /* Splash Screens */
   #endScreen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: none; z-index: 200; padding: 20px; overflow-y: auto; }
@@ -32,8 +61,20 @@
   #playAgainBtn { padding: 15px 40px; font-size: 20px; background: #4CAF50; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: bold; margin-top: 30px; }
 </style>
 
+<!-- Menu Screen -->
+<div id="menuScreen">
+  <div class="menu-title">🦁 Animal Hunt 🐠</div>
+  <div class="menu-subtitle">Choose your adventure:</div>
+  <div class="menu-buttons">
+    <button class="menu-btn safari-btn" onclick="selectTheme('safari')">🦁 Safari Animals</button>
+    <button class="menu-btn sea-btn" onclick="selectTheme('sea')">🐠 Under the Sea</button>
+  </div>
+</div>
+
+<!-- Game Screen -->
 <div id="game">
   <video id="camera" autoplay playsinline></video>
+  <div id="waterFilter"></div>
   <div id="animals"></div>
   <button id="permissionBtn">Start Hunting</button>
   <div id="timer">20</div>
@@ -55,12 +96,37 @@
 </div>
 
 <script>
+  // Animal themes
+  const themes = {
+    safari: { 
+      '🦁': 'Lion', 
+      '🐘': 'Elephant', 
+      '🦒': 'Giraffe', 
+      '🐅': 'Tiger', 
+      '🦓': 'Zebra', 
+      '🐻': 'Bear', 
+      '🦊': 'Fox', 
+      '🐒': 'Monkey' 
+    },
+    sea: {
+      '🐠': 'Fish',
+      '🐙': 'Octopus',
+      '🦈': 'Shark',
+      '🐢': 'Turtle',
+      '🦑': 'Squid',
+      '🦀': 'Crab',
+      '🐚': 'Shell',
+      '🦐': 'Shrimp'
+    }
+  };
+
   const video = document.getElementById('camera');
   const animalsContainer = document.getElementById('animals');
   const timerDisplay = document.getElementById('timer');
-  const animalEmojis = { '🦁': 'Lion', '🐘': 'Elephant', '🦒': 'Giraffe', '🐅': 'Tiger', '🦓': 'Zebra', '🐻': 'Bear', '🦊': 'Fox', '🐒': 'Monkey' };
-  const animalKeys = Object.keys(animalEmojis);
   
+  let currentTheme = null;
+  let animalEmojis = {};
+  let animalKeys = [];
   let placedAnimals = [];
   let tiltForward = 0;
   let motionEnabled = false;
@@ -69,17 +135,35 @@
   let animalCounts = {};
   let animalCountsActual = {};
   let currentRotationAnimal = null;
-  
-  // Initialize counts
-  animalKeys.forEach(animal => {
-    animalCounts[animal] = 0;
-    animalCountsActual[animal] = 0;
-  });
 
   // Start camera
   navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
     .then(stream => video.srcObject = stream)
     .catch(() => alert('Camera access denied'));
+
+  // Theme selection
+  window.selectTheme = function(theme) {
+    currentTheme = theme;
+    animalEmojis = themes[theme];
+    animalKeys = Object.keys(animalEmojis);
+    
+    // Show blue filter for sea theme
+    const waterFilter = document.getElementById('waterFilter');
+    if (theme === 'sea') {
+      waterFilter.classList.add('active');
+    } else {
+      waterFilter.classList.remove('active');
+    }
+    
+    // Initialize counts
+    animalKeys.forEach(animal => {
+      animalCounts[animal] = 0;
+      animalCountsActual[animal] = 0;
+    });
+    
+    document.getElementById('menuScreen').classList.add('hidden');
+    document.getElementById('game').style.display = 'block';
+  };
 
   // Request motion permission
   document.getElementById('permissionBtn').addEventListener('click', async () => {
@@ -108,12 +192,10 @@
     gameActive = true;
     document.getElementById('permissionBtn').style.display = 'none';
     placedAnimals = [];
-    animalCountsActual = {};
     animalKeys.forEach(animal => {
       animalCountsActual[animal] = 0;
     });
     
-    // Start spawning animals every 5 seconds
     spawnNewAnimal();
     let rotationInterval = setInterval(() => {
       if (gameActive) {
@@ -123,7 +205,6 @@
       }
     }, 5000);
 
-    // Start timer
     let timerInterval = setInterval(() => {
       timeLeft--;
       timerDisplay.textContent = timeLeft;
@@ -136,10 +217,7 @@
   }
 
   function spawnNewAnimal() {
-    // Pick a random animal for this 5-second round
     currentRotationAnimal = animalKeys[Math.floor(Math.random() * animalKeys.length)];
-    
-    // Spawn 3-5 of that animal
     let count = 2 + Math.floor(Math.random() * 4);
     for (let i = 0; i < count; i++) {
       spawnAnimal(currentRotationAnimal);
@@ -172,7 +250,6 @@
     
     animalCountsActual[animalEmoji]++;
 
-    // Remove after 5 seconds
     setTimeout(() => {
       animal.style.opacity = '0';
       setTimeout(() => {
@@ -182,7 +259,6 @@
     }, 5000);
   }
 
-  // Update animal sizes based on tilt
   setInterval(() => {
     placedAnimals.forEach(a => {
       let newSize = a.baseSize + (tiltForward * 1.5);
@@ -201,7 +277,6 @@
     const grid = document.getElementById('animalGrid');
     grid.innerHTML = '';
     
-    // Only show animals that actually appeared
     animalKeys.forEach(emoji => {
       if (animalCountsActual[emoji] > 0) {
         const card = document.createElement('div');
@@ -256,6 +331,8 @@
     document.getElementById('resultScreen').style.display = 'none';
     document.getElementById('scoreScreen').classList.remove('show');
     document.getElementById('permissionBtn').style.display = 'block';
+    document.getElementById('game').style.display = 'none';
+    document.getElementById('menuScreen').classList.remove('hidden');
     timeLeft = 20;
     timerDisplay.textContent = '20';
     animalKeys.forEach(animal => {
